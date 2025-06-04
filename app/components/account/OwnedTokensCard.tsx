@@ -10,7 +10,7 @@ import { PublicKey } from '@solana/web3.js';
 import { BigNumber } from 'bignumber.js';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { ChevronDown } from 'react-feather';
 
 type Display = 'summary' | 'detail' | null;
@@ -33,6 +33,7 @@ export function OwnedTokensCard({ address }: { address: string }) {
     const fetchAccountTokens = useFetchAccountOwnedTokens();
     const refresh = () => fetchAccountTokens(pubkey);
     const [showDropdown, setDropdown] = React.useState(false);
+    const [filterText, setFilterText] = useState('');
     const display = useQueryDisplay();
 
     // Fetch owned tokens
@@ -40,13 +41,26 @@ export function OwnedTokensCard({ address }: { address: string }) {
         if (!ownedTokens) refresh();
     }, [address]); // eslint-disable-line react-hooks/exhaustive-deps
 
+    const tokens = ownedTokens?.data?.tokens;
+    const status = ownedTokens?.status;
+    const fetching = status === FetchStatus.Fetching;
+    const filteredTokens = useMemo(
+        () =>
+            tokens?.filter(t => {
+                if (filterText.length === 0) return true;
+                const search = filterText.toLowerCase();
+                return (
+                    t.symbol?.toLowerCase().includes(search) ||
+                    t.name?.toLowerCase().includes(search) ||
+                    t.info.mint.toBase58().toLowerCase().includes(search)
+                );
+            }) || [],
+        [tokens, filterText]
+    );
+
     if (ownedTokens === undefined) {
         return null;
     }
-
-    const { status } = ownedTokens;
-    const tokens = ownedTokens.data?.tokens;
-    const fetching = status === FetchStatus.Fetching;
     if (fetching && (tokens === undefined || tokens.length === 0)) {
         return <LoadingCard message="Loading token holdings" />;
     } else if (tokens === undefined) {
@@ -66,14 +80,23 @@ export function OwnedTokensCard({ address }: { address: string }) {
             {showDropdown && <div className="dropdown-exit" onClick={() => setDropdown(false)} />}
 
             <div className="card">
-                <div className="card-header align-items-center">
+                <div className="card-header align-items-center flex-wrap gap-2">
                     <h3 className="card-header-title">Token Holdings</h3>
+                    <input
+                        type="text"
+                        placeholder="Search"
+                        value={filterText}
+                        onChange={e => setFilterText(e.target.value)}
+                        className="form-control form-control-sm w-auto"
+                    />
                     <DisplayDropdown display={display} toggle={() => setDropdown(show => !show)} show={showDropdown} />
                 </div>
-                {display === 'detail' ? (
-                    <HoldingsDetailTable tokens={tokens} />
+                {filteredTokens.length === 0 ? (
+                    <div className="card-body">No tokens match your search</div>
+                ) : display === 'detail' ? (
+                    <HoldingsDetailTable tokens={filteredTokens} />
                 ) : (
-                    <HoldingsSummaryTable tokens={tokens} />
+                    <HoldingsSummaryTable tokens={filteredTokens} />
                 )}
             </div>
         </>
